@@ -1,6 +1,7 @@
 package com.mangalens.feature.screencapture.data
 
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.mangalens.feature.screencapture.domain.CapturedFrame
@@ -9,9 +10,10 @@ object SharedCaptureState {
     private val _isCapturing = mutableStateOf(false)
     val isCapturing: State<Boolean> = _isCapturing
 
-    // Persist capture data here so it's not lost when the UI is recreated
+    // Int.MIN_VALUE is the "not set" sentinel. Never use -1 because
+    // Activity.RESULT_OK == -1 on Android.
+    var resultCode: Int = Int.MIN_VALUE
     var captureIntent: Intent? = null
-    var resultCode: Int = -1
 
     @Volatile
     var latestFrame: CapturedFrame? = null
@@ -21,9 +23,9 @@ object SharedCaptureState {
         _isCapturing.value = capturing
     }
 
+    // No need to close anything — Bitmap is managed by the GC.
     @Synchronized
     fun updateFrame(frame: CapturedFrame) {
-        latestFrame?.image?.close()
         latestFrame = frame
     }
 }

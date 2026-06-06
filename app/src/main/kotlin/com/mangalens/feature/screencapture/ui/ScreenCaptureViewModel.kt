@@ -15,33 +15,38 @@ class ScreenCaptureViewModel(
     private val startCapture: StartCaptureUseCase,
     private val repository: ScreenCaptureRepository
 ) : ViewModel() {
-    
+
     val isCapturing: State<Boolean> = SharedCaptureState.isCapturing
 
     fun onStartCapture(context: Context, resultCode: Int, data: Intent) {
-        // Save to global state BEFORE starting service
+        // Save to in-memory state BEFORE starting the service so the service
+        // can use it as a fallback if the Intent extras are ever missing.
         SharedCaptureState.resultCode = resultCode
         SharedCaptureState.captureIntent = data
-        
+        CapturePrefs.saveResultCode(context, resultCode)
+
         val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
             action = ScreenCaptureService.ACTION_START
-            // Include data in intent as primary source
             putExtra("RESULT_CODE", resultCode)
             putExtra("DATA", data)
-            // Add flags to ensure it reaches the service correctly
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Do NOT add FLAG_ACTIVITY_NEW_TASK — it causes Android to deliver
+            // a recycled back-stack intent, dropping extras silently.
         }
-        
+
         try {
             ContextCompat.startForegroundService(context, serviceIntent)
         } catch (e: Exception) {
             e.printStackTrace()
+            SharedCaptureState.setCapturing(false)
+            SharedCaptureState.resultCode = Int.MIN_VALUE
+            SharedCaptureState.captureIntent = null
+            CapturePrefs.clear(context)
         }
     }
 
     fun onStopCapture(context: Context) {
-        CapturePrefs.setWantsCapture(context, false)
-        SharedCaptureState.resultCode = -1
+        CapturePrefs.clear(context)
+        SharedCaptureState.resultCode = Int.MIN_VALUE
         SharedCaptureState.captureIntent = null
         SharedCaptureState.setCapturing(false)
         context.stopService(Intent(context, ScreenCaptureService::class.java))
