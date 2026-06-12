@@ -1,6 +1,5 @@
 package com.mangalens.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,16 +13,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mangalens.feature.ocr.domain.DetectedText
-import com.mangalens.feature.translator.domain.Translation
-import com.mangalens.feature.overlay.domain.OverlayItem
 import com.mangalens.feature.history.ui.HistoryState
+import com.mangalens.feature.ocr.domain.DetectedText
+import com.mangalens.feature.overlay.domain.OverlayItem
+import com.mangalens.feature.translator.domain.Translation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     isCaptureGranted: Boolean,
     isCapturing: Boolean,
+    isGeminiActive: Boolean,
+    geminiEnabled: Boolean,
+    onToggleGemini: (Boolean) -> Unit,
     isOcrProcessing: Boolean,
     ocrResults: List<DetectedText>,
     isTranslating: Boolean,
@@ -60,7 +62,7 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Status Card
+            // Status card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -70,16 +72,106 @@ fun HomeScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatusRow("Service Status", if (isCapturing) "ACTIVE" else "INACTIVE", if (isCapturing) Color(0xFF4CAF50) else Color(0xFFF44336))
-                    StatusRow("Permission", if (isCaptureGranted) "GRANTED" else "REQUIRED", if (isCaptureGranted) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                    StatusRow(
+                        label = "Service",
+                        status = if (isCapturing) "ACTIVE" else "INACTIVE",
+                        color = if (isCapturing) Color(0xFF4CAF50) else Color(0xFFF44336)
+                    )
+                    StatusRow(
+                        label = "Permission",
+                        status = if (isCaptureGranted) "GRANTED" else "REQUIRED",
+                        color = if (isCaptureGranted) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                    )
+                    StatusRow(
+                        label = "Translation",
+                        status = if (isGeminiActive && geminiEnabled) "GEMINI AI ✦"
+                        else "ML KIT (offline)",
+                        color = if (isGeminiActive && geminiEnabled) Color(0xFF7C4DFF)
+                        else Color(0xFF9E9E9E)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Gemini toggle — only visible when API key is saved
+            if (isGeminiActive) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF7C4DFF).copy(alpha = 0.1f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                "Use Gemini AI",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color(0xFF7C4DFF)
+                            )
+                            Text(
+                                if (geminiEnabled) "AI translation active"
+                                else "ML Kit (offline) active",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = geminiEnabled,
+                            onCheckedChange = onToggleGemini,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF7C4DFF),
+                                checkedTrackColor = Color(0xFF7C4DFF).copy(alpha = 0.4f)
+                            )
+                        )
+                    }
+                }
+            }
 
-            // Main Action Button
+            // Gemini setup prompt — only when no key saved and not capturing
+            if (!isGeminiActive && !isCapturing) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF7C4DFF).copy(alpha = 0.1f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✦", fontSize = 20.sp, color = Color(0xFF7C4DFF))
+                        Column {
+                            Text(
+                                "Add Gemini API key for accurate translations",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7C4DFF)
+                            )
+                            Text(
+                                "Tap ⚙ Settings → paste your key → Save → restart capture",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Pushes buttons to the bottom — use fillMaxHeight fraction instead
+            // of weight() which requires a weighted parent
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (!isCapturing) {
                 Button(
                     onClick = onStartCapture,
@@ -87,10 +179,18 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .height(64.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isGeminiActive && geminiEnabled)
+                            Color(0xFF7C4DFF) else Color(0xFF4CAF50)
+                    ),
                     enabled = isCaptureGranted
                 ) {
-                    Text("START TRANSLATION", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (isGeminiActive && geminiEnabled) "START (Gemini AI)"
+                        else "START TRANSLATION",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             } else {
                 Button(
@@ -99,22 +199,28 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .height(64.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFF44336)
+                    )
                 ) {
-                    Text("STOP TRANSLATION", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("STOP TRANSLATION", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // Stats Card
+            // Stats card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Live Statistics", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Live Statistics",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall
+                    )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("Detected Blocks: ${ocrResults.size}")
                     Text("Last Translation: ${translation?.translatedText ?: "None"}")
@@ -133,10 +239,7 @@ fun StatusRow(label: String, status: String, color: Color) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, fontWeight = FontWeight.Medium)
-        Surface(
-            color = color,
-            shape = CircleShape
-        ) {
+        Surface(color = color, shape = CircleShape) {
             Text(
                 text = status,
                 color = Color.White,

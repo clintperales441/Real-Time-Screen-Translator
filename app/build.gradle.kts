@@ -20,7 +20,6 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -33,7 +32,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
     buildFeatures {
         compose = true
     }
@@ -59,6 +57,9 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.mlkit.ocr.japanese)
     implementation(libs.mlkit.translate)
+    // Gemini SDK
+    implementation(libs.generativeai)
+    implementation(libs.okhttp)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

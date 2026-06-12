@@ -8,13 +8,8 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -22,6 +17,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.mangalens.feature.gemini.GeminiSettings
 import com.mangalens.feature.history.data.HistoryRepositoryImpl
 import com.mangalens.feature.history.data.TranslationDao
 import com.mangalens.feature.history.domain.GetHistoryUseCase
@@ -53,27 +49,40 @@ fun NavGraph() {
 
     var isOverlayGranted by rememberSaveable { mutableStateOf(false) }
     var isCaptureGranted by rememberSaveable { mutableStateOf(false) }
+    var geminiApiKey by rememberSaveable {
+        mutableStateOf(GeminiSettings.getApiKey(context))
+    }
+    var geminiEnabled by rememberSaveable {
+        mutableStateOf(GeminiSettings.isEnabled(context))
+    }
 
     val navController = rememberNavController()
 
     val dataSource = remember { MediaProjectionDataSource() }
     val repository = remember { ScreenCaptureRepositoryImpl(dataSource) }
-    val captureViewModel = remember { ScreenCaptureViewModel(StartCaptureUseCase(repository), repository) }
+    val captureViewModel = remember {
+        ScreenCaptureViewModel(StartCaptureUseCase(repository), repository)
+    }
 
     val ocrRepository = remember { OcrRepositoryImpl(MlKitOcrDataSource()) }
     val ocrViewModel = remember { OcrViewModel(ProcessFrameUseCase(ocrRepository)) }
 
     val translationRepository = remember { TranslationRepositoryImpl(MlKitTranslationSource()) }
-    val translationViewModel = remember { TranslationViewModel(TranslateTextUseCase(translationRepository)) }
+    val translationViewModel = remember {
+        TranslationViewModel(TranslateTextUseCase(translationRepository))
+    }
 
     val overlayRepository = remember { OverlayRepositoryImpl(context) }
     val overlayViewModel = remember { OverlayViewModel(overlayRepository) }
 
     val historyDao = remember {
         object : TranslationDao {
-            private val storage = mutableListOf<com.mangalens.feature.history.data.TranslationEntity>()
+            private val storage =
+                mutableListOf<com.mangalens.feature.history.data.TranslationEntity>()
             override fun getAll() = storage.toList()
-            override fun insert(entity: com.mangalens.feature.history.data.TranslationEntity) { storage.add(entity) }
+            override fun insert(
+                entity: com.mangalens.feature.history.data.TranslationEntity
+            ) { storage.add(entity) }
         }
     }
     val historyViewModel = remember {
@@ -82,9 +91,7 @@ fun NavGraph() {
 
     val overlayLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        isOverlayGranted = Settings.canDrawOverlays(context)
-    }
+    ) { isOverlayGranted = Settings.canDrawOverlays(context) }
 
     val captureLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -98,12 +105,10 @@ fun NavGraph() {
         }
     }
 
-    // Refresh overlay permission status whenever the user comes back from Settings.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
+            if (event == Lifecycle.Event.ON_RESUME)
                 isOverlayGranted = Settings.canDrawOverlays(context)
-            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -117,10 +122,17 @@ fun NavGraph() {
             val translationState by translationViewModel.state
             val overlayState by overlayViewModel.state
             val historyState by historyViewModel.state
+            val isGeminiActive = GeminiSettings.isConfigured(context)
 
             HomeScreen(
                 isCaptureGranted = isCaptureGranted,
                 isCapturing = isCapturing,
+                isGeminiActive = isGeminiActive,
+                geminiEnabled = geminiEnabled,
+                onToggleGemini = { enabled ->
+                    geminiEnabled = enabled
+                    GeminiSettings.setEnabled(context, enabled)
+                },
                 isOcrProcessing = ocrState.isProcessing,
                 ocrResults = ocrState.results,
                 isTranslating = translationState.isTranslating,
@@ -133,13 +145,11 @@ fun NavGraph() {
                         navController.navigate(Screen.Permissions.route)
                         return@HomeScreen
                     }
-                    // Reuse in-memory data if the process is still alive.
                     val savedIntent = SharedCaptureState.captureIntent
                     val savedCode = SharedCaptureState.resultCode
                     if (savedIntent != null && savedCode != Int.MIN_VALUE) {
                         captureViewModel.onStartCapture(context, savedCode, savedIntent)
                     } else {
-                        // Process was killed or first launch — must ask for permission again.
                         val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
                                 as MediaProjectionManager
                         captureLauncher.launch(manager.createScreenCaptureIntent())
@@ -149,7 +159,9 @@ fun NavGraph() {
                 onRunOcr = {},
                 onRunTranslation = {},
                 onShowOverlay = {
-                    overlayViewModel.show(listOf(OverlayItem("sample", "Good morning", 100, 120)))
+                    overlayViewModel.show(
+                        listOf(OverlayItem("sample", "Good morning", 100, 120, 300, 80))
+                    )
                 },
                 onHideOverlay = { overlayViewModel.hide() },
                 onLoadHistory = { historyViewModel.load() },
@@ -161,6 +173,7 @@ fun NavGraph() {
             PermissionScreen(
                 isOverlayGranted = isOverlayGranted,
                 isCaptureGranted = isCaptureGranted,
+                geminiApiKey = geminiApiKey,
                 onRequestOverlay = {
                     overlayLauncher.launch(
                         Intent(
@@ -172,6 +185,10 @@ fun NavGraph() {
                 onRequestCapture = {
                     val manager = context.getSystemService(MediaProjectionManager::class.java)
                     manager?.createScreenCaptureIntent()?.let { captureLauncher.launch(it) }
+                },
+                onSaveApiKey = { key ->
+                    GeminiSettings.setApiKey(context, key)
+                    geminiApiKey = key
                 },
                 onBack = { navController.popBackStack() }
             )
